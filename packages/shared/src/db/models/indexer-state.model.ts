@@ -20,8 +20,8 @@ export class IndexerState {
   @prop({ required: true })
   lastProcessedBlockNumber!: number;
 
-  @prop({ required: true })
-  lastProcessedBlockHash!: string;
+  @prop()
+  lastProcessedBlockHash?: string;
 
   @prop({ required: true, default: "running" })
   status!: IndexerStatus;

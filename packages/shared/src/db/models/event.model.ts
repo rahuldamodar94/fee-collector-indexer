@@ -37,4 +37,4 @@ export class FeeCollectedEvent {
   public lifiFee!: string;
 }
 
-export const FeeCollectedModel = getModelForClass(FeeCollectedEvent);
+export const FeeCollectedEventModel = getModelForClass(FeeCollectedEvent);
