@@ -32,6 +32,11 @@ export async function startScanner(config: ChainConfig) {
   };
 
   while (true) {
+    if (state.status === "halted") {
+      console.error(`chain ${config.chainId} halted, exiting scanner`);
+      return;
+    }
+
     try {
       const safeHead = await getSafeHead(provider, config);
       const fromBlock = state.lastProcessedBlockNumber + 1;
@@ -39,6 +44,21 @@ export async function startScanner(config: ChainConfig) {
       if (fromBlock > safeHead) {
         await sleep(config.pollIntervalMs);
         continue;
+      }
+
+      if (state.lastProcessedBlockHash) {
+        const firstBlock = await provider.getBlock(fromBlock);
+        if (
+          firstBlock.parentHash.toLowerCase() !==
+          state.lastProcessedBlockHash.toLowerCase()
+        ) {
+          console.error(
+            `reorg detected on chain ${config.chainId}: stored=${state.lastProcessedBlockHash} parent=${firstBlock.parentHash}`,
+          );
+          state.status = "halted";
+          await state.save();
+          return;
+        }
       }
 
       const toBlock = Math.min(
@@ -71,7 +91,7 @@ export async function startScanner(config: ChainConfig) {
             "too-large",
             chunkState,
             config,
-            safeHead - toBlock,
+            blocksBehind,
           );
           continue;
         }
@@ -92,11 +112,10 @@ export async function startScanner(config: ChainConfig) {
           console.log(`Inserting ${parsed.length} events into database...`);
           await FeeCollectedEventModel.insertMany(parsed, { ordered: false });
         } catch (err) {
-          console.error(
-            "Error inserting events, some may have been inserted",
-            err,
-          );
-          if ((err as { code?: number }).code !== 11000) throw err;
+          if ((err as { code?: number }).code !== 11000) {
+            console.error("Error inserting events", err);
+            throw err;
+          }
         }
       }
 
