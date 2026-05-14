@@ -2,5 +2,14 @@
   "name": "@fee-collector/indexer",
   "version": "0.1.0",
   "private": true,
-  "main": "./src/index.ts"
+  "main": "./src/index.ts",
+  "dependencies": {
+    "@fee-collector/shared": "0.1.0",
+    "dotenv": "^17.4.2",
+    "ethers": "^5.8.0",
+    "winston": "^3.19.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.7.0"
+  }
 }
