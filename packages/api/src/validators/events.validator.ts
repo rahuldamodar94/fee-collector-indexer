@@ -1,9 +1,5 @@
 import { z } from "zod";
-
-const decodedCursorSchema = z.object({
-  blockNumber: z.number().int().nonnegative(),
-  logIndex: z.number().int().nonnegative(),
-});
+import { decodeCursor } from "../utils/cursor";
 
 const cursorSchema = z
   .string()
@@ -11,8 +7,7 @@ const cursorSchema = z
   .transform((val, ctx) => {
     if (val === undefined) return undefined;
     try {
-      const raw = JSON.parse(Buffer.from(val, "base64url").toString("utf8"));
-      return decodedCursorSchema.parse(raw);
+      return decodeCursor(val);
     } catch {
       ctx.addIssue({ code: "custom", message: "invalid cursor" });
       return z.NEVER;

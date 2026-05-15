@@ -22,10 +22,22 @@ export async function findEvents(query: EventsQuery): Promise<EventsResult> {
   const docs = await FeeCollectedEventModel.find(filter)
     .sort({ blockNumber: -1, logIndex: -1 })
     .limit(query.limit + 1)
+    .select({
+      chainId: 1,
+      blockNumber: 1,
+      blockTimestamp: 1,
+      transactionHash: 1,
+      logIndex: 1,
+      integrator: 1,
+      token: 1,
+      integratorFee: 1,
+      lifiFee: 1,
+      _id: 0,
+    })
     .lean();
 
   const hasMore = docs.length > query.limit;
-  const events = hasMore ? docs.slice(0, query.limit) : docs;
+  const data = hasMore ? docs.slice(0, query.limit) : docs;
 
-  return { events, hasMore };
+  return { data, hasMore };
 }

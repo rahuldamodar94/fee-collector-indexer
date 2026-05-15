@@ -3,6 +3,7 @@ import {
   ChainConfig,
   IndexerStateModel,
   FeeCollectedEventModel,
+  getLogger,
 } from "@fee-collector/shared";
 import { createProvider } from "./rpc-client";
 import {
@@ -10,10 +11,22 @@ import {
   ParsedFeeCollectedEvent,
   parseLog,
 } from "./parser";
-import { ChunkTooLargeError, withRetry } from "./retry";
+import {
+  ChunkTooLargeError,
+  RetryGiveupError,
+  isChunkTooLarge,
+  withRetry,
+} from "./retry";
 import { nextChunkSize, ChunkState } from "./chunk-sizer";
 
+let stopRequested = false;
+
+export function requestScannerStop(): void {
+  stopRequested = true;
+}
+
 export async function startScanner(config: ChainConfig) {
+  const logger = getLogger();
   const provider = createProvider(config.rpcUrls, config.chainId);
 
   let state = await IndexerStateModel.findOne({ chainId: config.chainId });
@@ -31,9 +44,9 @@ export async function startScanner(config: ChainConfig) {
     consecutiveSuccess: 0,
   };
 
-  while (true) {
+  while (!stopRequested) {
     if (state.status === "halted") {
-      console.error(`chain ${config.chainId} halted, exiting scanner`);
+      logger.error("scanner halted, exiting");
       return;
     }
 
@@ -52,10 +65,14 @@ export async function startScanner(config: ChainConfig) {
           firstBlock.parentHash.toLowerCase() !==
           state.lastProcessedBlockHash.toLowerCase()
         ) {
-          console.error(
-            `reorg detected on chain ${config.chainId}: stored=${state.lastProcessedBlockHash} parent=${firstBlock.parentHash}`,
-          );
+          logger.error("reorg detected", {
+            storedHash: state.lastProcessedBlockHash,
+            parentHash: firstBlock.parentHash,
+            blockNumber: fromBlock,
+          });
           state.status = "halted";
+          state.lastError = `reorg detected: stored=${state.lastProcessedBlockHash} parent=${firstBlock.parentHash}`;
+          state.lastErrorAt = new Date();
           await state.save();
           return;
         }
@@ -68,23 +85,31 @@ export async function startScanner(config: ChainConfig) {
 
       const blocksBehind = safeHead - state.lastProcessedBlockNumber;
 
-      console.log(
-        `fetching ${fromBlock} → ${toBlock} (chunk=${chunkState.currentSize}, behind=${blocksBehind})`,
-      );
+      logger.info("fetching chunk", {
+        fromBlock,
+        toBlock,
+        chunkSize: chunkState.currentSize,
+        blocksBehind,
+      });
 
       let logs: ethers.providers.Log[];
 
       try {
-        logs = await withRetry(
-          () =>
-            provider.getLogs({
+        logs = await withRetry(async () => {
+          try {
+            return await provider.getLogs({
               address: config.contractAddress,
               fromBlock,
               toBlock,
               topics: [FEE_COLLECTED_TOPIC],
-            }),
-          config.maxRetries,
-        );
+            });
+          } catch (err) {
+            if (isChunkTooLarge(err)) {
+              throw new ChunkTooLargeError("chunk too large");
+            }
+            throw err;
+          }
+        }, config.maxRetries);
       } catch (err) {
         if (err instanceof ChunkTooLargeError) {
           chunkState = nextChunkSize(
@@ -109,11 +134,11 @@ export async function startScanner(config: ChainConfig) {
 
       if (parsed.length > 0) {
         try {
-          console.log(`Inserting ${parsed.length} events into database...`);
+          logger.info("inserting events", { count: parsed.length });
           await FeeCollectedEventModel.insertMany(parsed, { ordered: false });
         } catch (err) {
           if ((err as { code?: number }).code !== 11000) {
-            console.error("Error inserting events", err);
+            logger.error("insert failed", { err });
             throw err;
           }
         }
@@ -127,14 +152,16 @@ export async function startScanner(config: ChainConfig) {
 
       chunkState = nextChunkSize("success", chunkState, config, blocksBehind);
 
-      console.log(
-        `Finished processing up to block ${lastBlock.number} on ${config.chainName}`,
-      );
+      logger.info("chunk processed", { lastBlock: lastBlock.number });
     } catch (error) {
-      console.error("scanner error", error);
-      await sleep(config.pollIntervalMs);
+      const cooldown =
+        error instanceof RetryGiveupError ? 30000 : config.pollIntervalMs;
+      logger.error("scanner cycle error", { err: error, cooldownMs: cooldown });
+      await sleep(cooldown);
     }
   }
+
+  logger.info("scanner stopped");
 }
 
 async function getSafeHead(

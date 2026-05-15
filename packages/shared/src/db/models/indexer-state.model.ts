@@ -25,6 +25,12 @@ export class IndexerState {
 
   @prop({ required: true, default: "running" })
   status!: IndexerStatus;
+
+  @prop()
+  lastError?: string;
+
+  @prop()
+  lastErrorAt?: Date;
 }
 
 export const IndexerStateModel = getModelForClass(IndexerState);

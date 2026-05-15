@@ -7,8 +7,10 @@ export interface LoggerOptions {
   chainName?: string;
 }
 
+let _logger: winston.Logger | undefined;
+
 export function createLogger(opts: LoggerOptions): winston.Logger {
-  return winston.createLogger({
+  const logger = winston.createLogger({
     level: opts.level ?? "info",
     format: winston.format.combine(
       winston.format.timestamp(),
@@ -22,4 +24,13 @@ export function createLogger(opts: LoggerOptions): winston.Logger {
     },
     transports: [new winston.transports.Console()],
   });
+  _logger = logger;
+  return logger;
+}
+
+export function getLogger(): winston.Logger {
+  if (!_logger) {
+    throw new Error("logger not initialized, call createLogger() first");
+  }
+  return _logger;
 }

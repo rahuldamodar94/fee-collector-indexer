@@ -33,5 +33,12 @@ const EnvSchema = z.object({
 export type Env = z.infer<typeof EnvSchema>;
 
 export function loadEnv(): Env {
-  return EnvSchema.parse(process.env);
+  let parsed = EnvSchema.safeParse(process.env);
+  if (!parsed.success) {
+    const issues = parsed.error.issues
+      .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
+      .join("\n");
+    throw new Error(`Environment variable validation failed:\n${issues}`);
+  }
+  return parsed.data;
 }

@@ -37,6 +37,7 @@ services:
         condition: service_healthy
     ports:
       - "9090:9090"
+    stop_grace_period: 20s
     healthcheck:
       test:
         - CMD
@@ -63,6 +64,7 @@ services:
         condition: service_healthy
     ports:
       - "3000:3000"
+    stop_grace_period: 20s
     healthcheck:
       test:
         - CMD

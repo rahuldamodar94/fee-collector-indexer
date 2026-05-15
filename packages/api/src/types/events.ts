@@ -6,7 +6,7 @@ export interface EventsQuery {
 }
 
 export interface EventsResult {
-  events: Array<{
+  data: Array<{
     chainId: number;
     blockNumber: number;
     blockTimestamp: Date;

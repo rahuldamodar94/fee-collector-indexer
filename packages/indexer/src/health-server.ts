@@ -1,6 +1,7 @@
 import http from "http";
 import mongoose from "mongoose";
 import { register, collectDefaultMetrics } from "prom-client";
+import { getLogger } from "@fee-collector/shared";
 
 collectDefaultMetrics();
 
@@ -26,7 +27,7 @@ export function startHealthServer(port: number): http.Server {
   });
 
   server.listen(port, () => {
-    console.log(`health server listening on :${port}`);
+    getLogger().info("health server listening", { port });
   });
 
   return server;

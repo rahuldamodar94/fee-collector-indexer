@@ -5,7 +5,7 @@ export interface ChunkState {
   consecutiveSuccess: number;
 }
 
-export type ChunkOutcome = "success" | "too-large" | "timeout";
+export type ChunkOutcome = "success" | "too-large";
 
 const GROWTH_THRESHOLD = 10;
 const GROWTH_MULTIPLIER = 1.5;
@@ -24,7 +24,7 @@ export function nextChunkSize(
     };
   }
 
-  if (outcome === "timeout" || outcome === "too-large") {
+  if (outcome === "too-large") {
     return {
       currentSize: Math.max(
         config.minChunkSize,

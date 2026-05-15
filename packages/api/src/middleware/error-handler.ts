@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
-import { HttpError } from "../utils/http-errors.js";
+import { getLogger } from "@fee-collector/shared";
+import { HttpError } from "../utils/http-errors";
 
 export function errorHandler(
   err: unknown,
@@ -18,7 +19,7 @@ export function errorHandler(
     return;
   }
 
-  console.error("unhandled error", err);
+  getLogger().error("unhandled error", { err });
   res.status(500).json({
     error: {
       code: "internal_error",
