@@ -1,0 +1,78 @@
+services:
+  mongo:
+    image: mongo:7
+    container_name: fee-collector-mongo
+    restart: unless-stopped
+    # Host port 27018 to avoid colliding with a local mongod on 27017.
+    # Containers reach this service via "mongo:27017" on the compose network.
+    ports:
+      - "27018:27017"
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test:
+        - CMD
+        - mongosh
+        - --quiet
+        - --eval
+        - "db.adminCommand('ping').ok"
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+  indexer:
+    build:
+      context: .
+      dockerfile: packages/indexer/Dockerfile
+    container_name: fee-collector-indexer
+    restart: unless-stopped
+    env_file: .env
+    # Overrides for in-network values; .env stays usable for non-Docker dev.
+    environment:
+      MONGO_URL: mongodb://mongo:27017
+      NODE_ENV: production
+    depends_on:
+      mongo:
+        condition: service_healthy
+    ports:
+      - "9090:9090"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "require('http').get('http://localhost:9090/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  api:
+    build:
+      context: .
+      dockerfile: packages/api/Dockerfile
+    container_name: fee-collector-api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      MONGO_URL: mongodb://mongo:27017
+      NODE_ENV: production
+    depends_on:
+      mongo:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "require('http').get('http://localhost:3000/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  mongo-data:

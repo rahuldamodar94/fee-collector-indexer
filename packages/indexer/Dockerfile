@@ -1,0 +1,51 @@
+# syntax=docker/dockerfile:1.7
+
+# ===== build stage =====
+FROM node:20-alpine AS base
+WORKDIR /app
+
+# Workspace manifests (cache-friendly install layer)
+COPY package.json package-lock.json tsconfig.base.json ./
+COPY packages/shared/package.json packages/shared/
+COPY packages/indexer/package.json packages/indexer/
+COPY packages/api/package.json packages/api/
+
+# Install entire workspace graph including dev deps (need tsc)
+RUN npm ci
+
+# Copy source for the packages this image builds
+COPY packages/shared packages/shared
+COPY packages/indexer packages/indexer
+
+# Compile shared first (indexer imports it), then indexer
+RUN npx tsc -p packages/shared
+RUN npx tsc -p packages/indexer
+
+# Drop dev deps from node_modules so the runtime stage gets a slim copy
+RUN npm prune --omit=dev
+
+# ===== runtime stage =====
+FROM node:20-alpine AS runtime
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+# Pruned node_modules plus root package.json so npm workspace symlinks resolve
+COPY --from=base /app/node_modules ./node_modules
+COPY --from=base /app/package.json ./
+
+# Shared package: compiled dist + manifest pointed at dist
+COPY --from=base /app/packages/shared/package.json ./packages/shared/
+COPY --from=base /app/packages/shared/dist ./packages/shared/dist
+RUN npm pkg set main=./dist/index.js -w packages/shared
+
+# Indexer package: compiled dist + manifest
+COPY --from=base /app/packages/indexer/package.json ./packages/indexer/
+COPY --from=base /app/packages/indexer/dist ./packages/indexer/dist
+
+# Drop privileges
+USER node
+
+EXPOSE 9090
+
+CMD ["node", "packages/indexer/dist/index.js"]
