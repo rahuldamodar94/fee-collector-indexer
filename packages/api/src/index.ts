@@ -24,7 +24,7 @@ async function main() {
   });
 
   const shutdown = (signal: string) => {
-    logger.info(`${signal} received, draining server`);
+    logger.info("server shutdown started", { signal });
     server.closeIdleConnections();
     server.close(async (err) => {
       if (err) logger.error("server close error", { err });

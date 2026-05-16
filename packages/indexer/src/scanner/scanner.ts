@@ -67,7 +67,7 @@ export async function startScanner(config: ChainConfig) {
             blockNumber: fromBlock,
           });
           state.status = "halted";
-          state.lastError = `reorg detected: stored=${state.lastProcessedBlockHash} parent=${firstBlock.parentHash}`;
+          state.lastError = `reorg detected: stored=${state.lastProcessedBlockHash.toLowerCase()} parent=${firstBlock.parentHash.toLowerCase()}`;
           state.lastErrorAt = new Date();
           await state.save();
           return;

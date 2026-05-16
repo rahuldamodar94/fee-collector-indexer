@@ -5,7 +5,7 @@ import {
   getModelForClass,
 } from "@typegoose/typegoose";
 
-export type IndexerStatus = "running" | "halted" | "error";
+export type IndexerStatus = "running" | "halted";
 
 @modelOptions({
   schemaOptions: {

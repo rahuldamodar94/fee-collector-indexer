@@ -43,7 +43,6 @@ export async function withRetry<T>(
     try {
       return await fn();
     } catch (err) {
-      logger.warn("retry attempt", { attempt, err });
       const e = err as { status?: number; code?: string };
       const status = e?.status;
       const code = e?.code;
@@ -60,6 +59,7 @@ export async function withRetry<T>(
 
       if (!isTransient) throw err;
 
+      logger.warn("retry attempt", { attempt, err });
       const BASE = 500;
       const MAX = 30000;
       const delay =

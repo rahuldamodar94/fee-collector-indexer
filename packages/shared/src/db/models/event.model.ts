@@ -25,16 +25,16 @@ export class FeeCollectedEvent {
   logIndex!: number;
 
   @prop({ required: true })
-  public blockTimestamp!: Date;
+  blockTimestamp!: Date;
 
   @prop({ required: true, lowercase: true })
-  public token!: string;
+  token!: string;
 
   @prop({ required: true })
-  public integratorFee!: string;
+  integratorFee!: string;
 
   @prop({ required: true })
-  public lifiFee!: string;
+  lifiFee!: string;
 }
 
 export const FeeCollectedEventModel = getModelForClass(FeeCollectedEvent);
