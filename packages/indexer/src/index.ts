@@ -35,11 +35,11 @@ async function main() {
     requestScannerStop();
   });
 
-  startHealthServer(env.HEALTH_PORT);
-
   await connectMongo(env.MONGO_URL, env.MONGO_DB_NAME);
   await FeeCollectedEventModel.syncIndexes();
   await IndexerStateModel.syncIndexes();
+
+  startHealthServer(env.HEALTH_PORT);
 
   logger.info("boot complete, starting scanner");
 

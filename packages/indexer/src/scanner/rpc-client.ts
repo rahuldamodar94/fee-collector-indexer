@@ -20,3 +20,10 @@ export function createProvider(rpcUrls: string[], chainId: number) {
 
   return new ethers.providers.FallbackProvider(providers, 1);
 }
+
+export function createBatchProvider(rpcUrls: string[], chainId: number) {
+  if (rpcUrls.length === 0) {
+    throw new Error("At least one RPC URL is required");
+  }
+  return new ethers.providers.JsonRpcBatchProvider(rpcUrls[0], chainId);
+}

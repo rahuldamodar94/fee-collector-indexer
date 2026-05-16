@@ -52,10 +52,8 @@ export async function withRetry<T>(
         status === 429 ||
         status === 502 ||
         status === 503 ||
-        status === 504 ||
         code === "SERVER_ERROR" ||
         code === "NETWORK_ERROR" ||
-        code === "TIMEOUT" ||
         code === "ECONNRESET" ||
         code === "ECONNREFUSED" ||
         code === "ETIMEDOUT";

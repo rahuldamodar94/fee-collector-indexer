@@ -5,18 +5,13 @@ import {
   FeeCollectedEventModel,
   getLogger,
 } from "@fee-collector/shared";
-import { createProvider } from "./rpc-client";
+import { createProvider, createBatchProvider } from "./rpc-client";
 import {
   FEE_COLLECTED_TOPIC,
   ParsedFeeCollectedEvent,
   parseLog,
 } from "./parser";
-import {
-  ChunkTooLargeError,
-  RetryGiveupError,
-  isChunkTooLarge,
-  withRetry,
-} from "./retry";
+import { RetryGiveupError, isChunkTooLarge, withRetry } from "./retry";
 import { nextChunkSize, ChunkState } from "./chunk-sizer";
 
 let stopRequested = false;
@@ -28,6 +23,7 @@ export function requestScannerStop(): void {
 export async function startScanner(config: ChainConfig) {
   const logger = getLogger();
   const provider = createProvider(config.rpcUrls, config.chainId);
+  const batchProvider = createBatchProvider(config.rpcUrls, config.chainId);
 
   let state = await IndexerStateModel.findOne({ chainId: config.chainId });
 
@@ -95,23 +91,18 @@ export async function startScanner(config: ChainConfig) {
       let logs: ethers.providers.Log[];
 
       try {
-        logs = await withRetry(async () => {
-          try {
-            return await provider.getLogs({
+        logs = await withRetry(
+          () =>
+            provider.getLogs({
               address: config.contractAddress,
               fromBlock,
               toBlock,
               topics: [FEE_COLLECTED_TOPIC],
-            });
-          } catch (err) {
-            if (isChunkTooLarge(err)) {
-              throw new ChunkTooLargeError("chunk too large");
-            }
-            throw err;
-          }
-        }, config.maxRetries);
+            }),
+          config.maxRetries,
+        );
       } catch (err) {
-        if (err instanceof ChunkTooLargeError) {
+        if (isChunkTooLarge(err)) {
           chunkState = nextChunkSize(
             "too-large",
             chunkState,
@@ -123,13 +114,26 @@ export async function startScanner(config: ChainConfig) {
         throw err;
       }
 
+      // Tenderly caps JSON-RPC batches at 100; 50 leaves 2x headroom.
+      const BATCH_SIZE = 50;
       const parsed: ParsedFeeCollectedEvent[] = [];
 
-      for (const log of logs) {
-        const block = await provider.getBlock(log.blockNumber);
-        parsed.push(
-          parseLog(log, config.chainId, new Date(block.timestamp * 1000)),
+      for (let i = 0; i < logs.length; i += BATCH_SIZE) {
+        const slice = logs.slice(i, i + BATCH_SIZE);
+        const parsedSlice = await Promise.all(
+          slice.map(async (log) => {
+            const block = await withRetry(
+              () => batchProvider.getBlock(log.blockNumber),
+              config.maxRetries,
+            );
+            return parseLog(
+              log,
+              config.chainId,
+              new Date(block.timestamp * 1000),
+            );
+          }),
         );
+        parsed.push(...parsedSlice);
       }
 
       if (parsed.length > 0) {
@@ -144,7 +148,10 @@ export async function startScanner(config: ChainConfig) {
         }
       }
 
-      const lastBlock = await provider.getBlock(toBlock);
+      const lastBlock = await withRetry(
+        () => provider.getBlock(toBlock),
+        config.maxRetries,
+      );
 
       state.lastProcessedBlockNumber = lastBlock.number;
       state.lastProcessedBlockHash = lastBlock.hash;
