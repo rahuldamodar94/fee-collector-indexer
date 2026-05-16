@@ -6,12 +6,12 @@ export function createProvider(rpcUrls: string[], chainId: number) {
   }
 
   if (rpcUrls.length === 1) {
-    return new ethers.providers.StaticJsonRpcProvider(rpcUrls[0], chainId);
+    return new ethers.providers.JsonRpcProvider(rpcUrls[0], chainId);
   }
 
   const providers = rpcUrls.map((url, index) => {
     return {
-      provider: new ethers.providers.StaticJsonRpcProvider(url, chainId),
+      provider: new ethers.providers.JsonRpcProvider(url, chainId),
       priority: index + 1,
       stallTimeout: 2000,
       weight: 1,
