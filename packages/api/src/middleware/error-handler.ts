@@ -4,7 +4,7 @@ import { HttpError } from "../utils/http-errors";
 
 export function errorHandler(
   err: unknown,
-  _req: Request,
+  req: Request,
   res: Response,
   _next: NextFunction,
 ): void {
@@ -19,7 +19,11 @@ export function errorHandler(
     return;
   }
 
-  getLogger().error("unhandled error", { err });
+  getLogger().error("unhandled error", {
+    err,
+    method: req.method,
+    path: req.path,
+  });
   res.status(500).json({
     error: {
       code: "internal_error",
