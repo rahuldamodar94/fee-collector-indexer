@@ -33,8 +33,8 @@ The indexer scans the contract from a configured starting block, follows the cha
                             ▼
    ┌──────────────────────────────────────────────────────┐
    │                  API (Express)                       │
-   │  GET /events?integrator=…&chainId=…&limit=…&cursor=… │
-   │  GET /health                                         │
+   │  GET /api/events?integrator=…&chainId=…&limit=…     │
+   │  GET /api/health                                     │
    └────────────────────────┬─────────────────────────────┘
                             │ JSON
                             ▼
@@ -52,7 +52,7 @@ cp .env.example .env          # then edit RPC_URLS with your provider
 docker compose up -d
 
 # wait ~15 seconds for the indexer to start backfilling, then:
-curl "http://localhost:3000/events?integrator=0xbD6C7B0d2f68c2b7805d88388319cfB6EcB50eA9&limit=5"
+curl "http://localhost:3000/api/events?integrator=0xbD6C7B0d2f68c2b7805d88388319cfB6EcB50eA9&limit=5"
 ```
 
 Expected response: JSON with `data` and `pagination`. If the integrator has no events yet, `data` is an empty array and `pagination.hasMore` is `false`.
@@ -61,7 +61,7 @@ See [`.env.example`](.env.example) for the full set of configurable variables an
 
 ## API
 
-### `GET /events`
+### `GET /api/events`
 
 Returns `FeesCollected` events filtered by integrator, newest first, paginated by cursor.
 
@@ -119,13 +119,13 @@ Returns `FeesCollected` events filtered by integrator, newest first, paginated b
 
 The cursor is opaque to the client. Internally it is base64url-encoded JSON `{ "blockNumber": number, "logIndex": number }`. The server validates the shape on every request and rejects malformed values with a `400`.
 
-### `GET /health`
+### `GET /api/health`
 
 API container, port `3000`. Returns `200 { "status": "ok" }` when Mongo is reachable, `503 { "status": "unhealthy" }` otherwise.
 
-### `GET /health` and `GET /metrics`
+### `GET /indexer/health` and `GET /indexer/metrics`
 
-Indexer container, port `9090`. `/health` matches the API shape. `/metrics` exposes Prometheus default Node metrics today; indexer-specific counters arrive with the observability work.
+Indexer container, port `9090`. `/indexer/health` matches the API shape; `/indexer/metrics` exposes Prometheus default Node metrics in the standard text-exposition format.
 
 ## Data model
 
@@ -206,6 +206,8 @@ Five decisions that shape the rest of the code.
 
 **Cursor pagination on `(blockNumber, logIndex)`, not `skip` / `limit`.** Offset pagination is O(N) on the skipped prefix and unstable when new events insert during a paginating session. The cursor is base64url-encoded JSON validated server-side; clients treat it as opaque. The compound index on `(integrator, blockNumber desc, logIndex desc)` makes the lookup index-served on every page.
 
+The cursor deliberately does not include `chainId`. The compose default ships a single chain (Polygon), so the same `(blockNumber, logIndex)` pair cannot collide for one integrator. If multi-chain indexing is enabled later (one indexer process per chain, all writing to the same `events` collection), the `/api/events` query will be made stricter: `chainId` becomes a required query parameter so cross-chain queries are not possible in a single request. Putting `chainId` inside the cursor was the alternative; rejected because it complicates the cursor and serves a use case (cross-chain pagination for one integrator) that is not on the roadmap.
+
 **Adaptive chunk sizing for `eth_getLogs`.** RPC providers cap response sizes differently and their error messages vary: "too many results", "log response size exceeded", "query returned more than 10000 results", plus HTTP 504 and ethers `TIMEOUT` when the response is genuinely too large to deliver in time. The scanner classifies all of these as "shrink the chunk", halves the size, and retries immediately without consuming the retry budget. After ten consecutive successes the chunk grows by 1.5x, capped at `MAX_CHUNK_SIZE`. Near the head it pins to `MIN_CHUNK_SIZE` for latency. Fixed sizing was the alternative; no single value works for both backfill (where you want large chunks for throughput) and head-following (where you want small chunks for latency).
 
 ## References
@@ -216,7 +218,9 @@ Five decisions that shape the rest of the code.
 
 ## Operational notes
 
-**Ports.** API on `3000`, indexer health and metrics on `9090`, Mongo on host port `27018` (container-internal `27017`) so it coexists with a local `mongod` on `27017`. Inside the compose network, services reach Mongo as `mongo:27017`. If host port `27018` is already in use, remap it in `docker-compose.yml`; the host-side port is the only knob.
+**Ports.** API on `3000`, indexer health and metrics on `9090`, Mongo on host port `27018` (container-internal `27017`) so it coexists with a local `mongod` on `27017`, Prometheus UI on host port `9091`. Inside the compose network, services reach Mongo as `mongo:27017`. If host port `27018` is already in use, remap it in `docker-compose.yml`; the host-side port is the only knob.
+
+**Metrics.** A Prometheus container ships in the same `docker-compose.yml`. It scrapes the indexer's `/indexer/metrics` and the API's `/api/metrics` on the compose network. The UI is available at `http://localhost:9091` after `docker compose up -d`. Today the app exposes only `prom-client`'s default Node metrics (event-loop lag, GC, memory); custom counters can be added without changing the Prometheus config.
 
 **Graceful shutdown.** SIGTERM and SIGINT trigger a clean exit. The indexer flips an internal flag that breaks the scan loop between iterations, then disconnects Mongo. The API drains in-flight requests via `server.close` (with `closeIdleConnections` for keep-alive sockets), then disconnects Mongo. Both services exit with code 0 on a clean shutdown. The compose `stop_grace_period: 20s` gives Docker enough headroom past any reasonable cleanup before SIGKILL.
 

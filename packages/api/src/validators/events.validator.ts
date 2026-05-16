@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { decodeCursor } from "../utils/cursor";
+import { BadRequestError } from "../utils/http-errors";
 
 const cursorSchema = z
   .string()
@@ -28,3 +29,16 @@ export const eventsQuerySchema = z.object({
 });
 
 export type ValidatedEventsQuery = z.infer<typeof eventsQuerySchema>;
+
+export function validateEventsQuery(query: unknown): ValidatedEventsQuery {
+  const parsed = eventsQuerySchema.safeParse(query);
+  if (parsed.success) return parsed.data;
+
+  throw new BadRequestError(
+    "Invalid request parameters",
+    parsed.error.issues.map((issue) => ({
+      field: issue.path.join("."),
+      message: issue.message,
+    })),
+  );
+}

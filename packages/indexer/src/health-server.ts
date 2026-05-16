@@ -7,7 +7,7 @@ collectDefaultMetrics();
 
 export function startHealthServer(port: number): http.Server {
   const server = http.createServer(async (req, res) => {
-    if (req.url === "/health") {
+    if (req.url === "/indexer/health") {
       const ok = mongoose.connection.readyState === 1;
       res.statusCode = ok ? 200 : 503;
       res.setHeader("Content-Type", "application/json");
@@ -15,7 +15,7 @@ export function startHealthServer(port: number): http.Server {
       return;
     }
 
-    if (req.url === "/metrics") {
+    if (req.url === "/indexer/metrics") {
       res.statusCode = 200;
       res.setHeader("Content-Type", register.contentType);
       res.end(await register.metrics());
