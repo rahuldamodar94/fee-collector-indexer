@@ -26,14 +26,6 @@ async function main() {
     chainName: chainConfig.chainName,
   });
 
-  startHealthServer(env.HEALTH_PORT);
-
-  await connectMongo(env.MONGO_URL, env.MONGO_DB_NAME);
-  await FeeCollectedEventModel.syncIndexes();
-  await IndexerStateModel.syncIndexes();
-
-  logger.info("boot complete, starting scanner");
-
   process.on("SIGTERM", () => {
     logger.info("SIGTERM received, stopping scanner");
     requestScannerStop();
@@ -42,6 +34,14 @@ async function main() {
     logger.info("SIGINT received, stopping scanner");
     requestScannerStop();
   });
+
+  startHealthServer(env.HEALTH_PORT);
+
+  await connectMongo(env.MONGO_URL, env.MONGO_DB_NAME);
+  await FeeCollectedEventModel.syncIndexes();
+  await IndexerStateModel.syncIndexes();
+
+  logger.info("boot complete, starting scanner");
 
   await startScanner(chainConfig);
 

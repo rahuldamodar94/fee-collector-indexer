@@ -9,10 +9,10 @@ import {
 @index({ integrator: 1, blockNumber: -1, logIndex: -1 })
 @modelOptions({ schemaOptions: { collection: "events", timestamps: true } })
 export class FeeCollectedEvent {
-  @prop({ required: true, index: true })
+  @prop({ required: true })
   chainId!: number;
 
-  @prop({ required: true, index: true, lowercase: true })
+  @prop({ required: true, lowercase: true })
   integrator!: string;
 
   @prop({ required: true })
