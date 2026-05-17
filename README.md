@@ -126,7 +126,7 @@ API container, port `3000`. Returns `200 { "status": "ok" }` when Mongo is reach
 
 ### `GET /indexer/health` and `GET /indexer/metrics`
 
-Indexer container, port `9090`. `/indexer/health` matches the API shape; `/indexer/metrics` exposes Prometheus default Node metrics in the standard text-exposition format.
+Indexer container, port `9090`. `/indexer/health` matches the API shape; `/indexer/metrics` exposes Prometheus default Node metrics plus a small set of custom counters and gauges (`fee_collector_events_ingested_total`, `fee_collector_chain_head_lag_blocks`, `fee_collector_rpc_errors_total`, `fee_collector_reorg_detected_total`).
 
 ## Data model
 
@@ -230,8 +230,25 @@ The cursor deliberately does not include `chainId`. The compose default ships a 
 
 **Ports.** API on `3000`, indexer health and metrics on `9090`, Mongo on host port `27018` (container-internal `27017`) so it coexists with a local `mongod` on `27017`, Prometheus UI on host port `9091`. Inside the compose network, services reach Mongo as `mongo:27017`. If host port `27018` is already in use, remap it in `docker-compose.yml`; the host-side port is the only knob.
 
-**Metrics.** A Prometheus container ships in the same `docker-compose.yml`. It scrapes the indexer's `/indexer/metrics` and the API's `/api/metrics` on the compose network. The UI is available at `http://localhost:9091` after `docker compose up -d`. Today the app exposes only `prom-client`'s default Node metrics (event-loop lag, GC, memory); custom counters can be added without changing the Prometheus config.
+**Metrics.** A Prometheus container ships in the same `docker-compose.yml`. It scrapes the indexer's `/indexer/metrics` and the API's `/api/metrics` on the compose network. The UI is available at `http://localhost:9091` after `docker compose up -d`. Both endpoints expose `prom-client`'s default Node metrics (event-loop lag, GC, memory) plus a small custom set: the indexer emits counters and gauges for events ingested, chain-head lag, classified RPC errors, and reorgs detected; the API emits an `http_requests_total` counter and an `http_request_duration_seconds` histogram, labeled by method/route/status.
 
 **Graceful shutdown.** SIGTERM and SIGINT trigger a clean exit. The indexer flips an internal flag that breaks the scan loop between iterations, then disconnects Mongo. The API drains in-flight requests via `server.close` (with `closeIdleConnections` for keep-alive sockets), then disconnects Mongo. Both services exit with code 0 on a clean shutdown. The compose `stop_grace_period: 20s` gives Docker enough headroom past any reasonable cleanup before SIGKILL.
 
-**Multi-chain.** The compose default ships Polygon only. To run a second chain, copy `.env` to `.env.ethereum`, change `CHAIN_ID`, `CHAIN_NAME`, `RPC_URLS`, and `START_BLOCK`, then `docker compose --env-file .env.ethereum up indexer`. One indexer process per chain by design: failure isolation and independent scaling.
+**Multi-chain.** The compose default ships Polygon only. The image itself is chain-agnostic: every chain-specific knob (`CHAIN_ID`, `CHAIN_NAME`, `RPC_URLS`, `START_BLOCK`, `FINALITY_STRATEGY`, `POLL_INTERVAL_MS`) is env-driven. To run a second chain locally, copy `.env` to `.env.ethereum`, edit those values, and declare a second indexer service in `docker-compose.yml` pointing at the new env file:
+
+```yaml
+indexer-ethereum:
+  build:
+    context: .
+    dockerfile: packages/indexer/Dockerfile
+  env_file: .env.ethereum
+  environment:
+    MONGO_URL: mongodb://mongo:27017
+    NODE_ENV: production
+  depends_on:
+    mongo:
+      condition: service_healthy
+  restart: on-failure:5
+```
+
+No code changes required. In production, the same pattern applies via your orchestrator of choice — one container per chain, sharing the Mongo backend and API. One indexer process per chain by design: failure isolation and independent scaling.
