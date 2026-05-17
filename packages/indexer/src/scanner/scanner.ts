@@ -88,18 +88,14 @@ export async function startScanner(config: ChainConfig) {
         blocksBehind,
       });
 
-      let logs: ethers.providers.Log[];
-
+      let parsed: ParsedFeeCollectedEvent[];
       try {
-        logs = await withRetry(
-          () =>
-            provider.getLogs({
-              address: config.contractAddress,
-              fromBlock,
-              toBlock,
-              topics: [FEE_COLLECTED_TOPIC],
-            }),
-          config.maxRetries,
+        parsed = await fetchAndParseChunk(
+          provider,
+          batchProvider,
+          config,
+          fromBlock,
+          toBlock,
         );
       } catch (err) {
         if (isChunkTooLarge(err)) {
@@ -112,28 +108,6 @@ export async function startScanner(config: ChainConfig) {
           continue;
         }
         throw err;
-      }
-
-      // Tenderly caps JSON-RPC batches at 100; 50 leaves 2x headroom.
-      const BATCH_SIZE = 50;
-      const parsed: ParsedFeeCollectedEvent[] = [];
-
-      for (let i = 0; i < logs.length; i += BATCH_SIZE) {
-        const slice = logs.slice(i, i + BATCH_SIZE);
-        const parsedSlice = await Promise.all(
-          slice.map(async (log) => {
-            const block = await withRetry(
-              () => batchProvider.getBlock(log.blockNumber),
-              config.maxRetries,
-            );
-            return parseLog(
-              log,
-              config.chainId,
-              new Date(block.timestamp * 1000),
-            );
-          }),
-        );
-        parsed.push(...parsedSlice);
       }
 
       if (parsed.length > 0) {
@@ -182,6 +156,49 @@ async function getSafeHead(
 
   const latest = await provider.getBlockNumber();
   return latest - config.confirmationDepth;
+}
+
+async function fetchAndParseChunk(
+  provider: ethers.providers.BaseProvider,
+  batchProvider: ethers.providers.BaseProvider,
+  config: ChainConfig,
+  fromBlock: number,
+  toBlock: number,
+): Promise<ParsedFeeCollectedEvent[]> {
+  const logs = await withRetry(
+    () =>
+      provider.getLogs({
+        address: config.contractAddress,
+        fromBlock,
+        toBlock,
+        topics: [FEE_COLLECTED_TOPIC],
+      }),
+    config.maxRetries,
+  );
+
+  // Tenderly caps JSON-RPC batches at 100; 50 leaves 2x headroom.
+  const BATCH_SIZE = 50;
+  const parsed: ParsedFeeCollectedEvent[] = [];
+
+  for (let i = 0; i < logs.length; i += BATCH_SIZE) {
+    const slice = logs.slice(i, i + BATCH_SIZE);
+    const parsedSlice = await Promise.all(
+      slice.map(async (log) => {
+        const block = await withRetry(
+          () => batchProvider.getBlock(log.blockNumber),
+          config.maxRetries,
+        );
+        return parseLog(
+          log,
+          config.chainId,
+          new Date(block.timestamp * 1000),
+        );
+      }),
+    );
+    parsed.push(...parsedSlice);
+  }
+
+  return parsed;
 }
 
 async function sleep(ms: number): Promise<void> {
