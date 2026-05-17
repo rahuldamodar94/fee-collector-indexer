@@ -3,6 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "main": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest"
+  },
   "dependencies": {
     "@fee-collector/shared": "0.1.0",
     "dotenv": "^17.4.2",

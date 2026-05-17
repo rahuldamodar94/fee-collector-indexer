@@ -11,13 +11,17 @@ import {
   ParsedFeeCollectedEvent,
   parseLog,
 } from "./parser";
-import { RetryGiveupError, isChunkTooLarge, withRetry } from "./retry";
-import { nextChunkSize, ChunkState } from "./chunk-sizer";
+import { RetryGiveupError, withRetry } from "./retry";
+import { nextChunkSize, ChunkState, isChunkTooLarge } from "./chunk-sizer";
 
 let stopRequested = false;
 
 export function requestScannerStop(): void {
   stopRequested = true;
+}
+
+export function __resetStopRequestedForTests(): void {
+  stopRequested = false;
 }
 
 export async function startScanner(config: ChainConfig) {
@@ -188,11 +192,7 @@ async function fetchAndParseChunk(
           () => batchProvider.getBlock(log.blockNumber),
           config.maxRetries,
         );
-        return parseLog(
-          log,
-          config.chainId,
-          new Date(block.timestamp * 1000),
-        );
+        return parseLog(log, config.chainId, new Date(block.timestamp * 1000));
       }),
     );
     parsed.push(...parsedSlice);

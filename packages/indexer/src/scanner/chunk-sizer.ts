@@ -5,6 +5,29 @@ export interface ChunkState {
   consecutiveSuccess: number;
 }
 
+export class ChunkTooLargeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ChunkTooLargeError";
+  }
+}
+
+const tooLargePhrases = [
+  "too many results",
+  "log response size exceeded",
+  "query returned more than",
+  "exceeded max results",
+  "request entity too large",
+];
+
+export function isChunkTooLarge(err: unknown): boolean {
+  const e = err as { message?: string; status?: number; code?: string };
+  const message = (e?.message ?? "").toLowerCase();
+  const matchesPhrase = tooLargePhrases.some((p) => message.includes(p));
+  const isTimeout = e?.status === 504 || e?.code === "TIMEOUT";
+  return matchesPhrase || isTimeout;
+}
+
 export type ChunkOutcome = "success" | "too-large";
 
 const GROWTH_THRESHOLD = 10;

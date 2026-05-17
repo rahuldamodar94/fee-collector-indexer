@@ -5,9 +5,16 @@
   "workspaces": [
     "packages/*"
   ],
+  "scripts": {
+    "test": "npm test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
   "devDependencies": {
     "@types/node": "^25.7.0",
+    "@vitest/coverage-v8": "^4.1.6",
+    "mongodb-memory-server": "^11.1.0",
     "ts-node": "^10.9.2",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.6"
   }
 }
