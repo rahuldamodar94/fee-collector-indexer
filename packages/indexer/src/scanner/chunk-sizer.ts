@@ -5,13 +5,6 @@ export interface ChunkState {
   consecutiveSuccess: number;
 }
 
-export class ChunkTooLargeError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "ChunkTooLargeError";
-  }
-}
-
 const tooLargePhrases = [
   "too many results",
   "log response size exceeded",

@@ -1,5 +1,7 @@
 import "reflect-metadata";
 import dotenv from "dotenv";
+dotenv.config();
+
 import {
   loadEnv,
   connectMongo,
@@ -7,7 +9,6 @@ import {
   createLogger,
 } from "@fee-collector/shared";
 import app from "./app";
-dotenv.config();
 
 async function main() {
   const env = loadEnv();

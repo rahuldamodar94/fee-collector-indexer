@@ -14,12 +14,15 @@ import {
 import { RetryGiveupError, withRetry } from "./retry";
 import { nextChunkSize, ChunkState, isChunkTooLarge } from "./chunk-sizer";
 
+const LONG_PAUSE_MS = 30_000;
+
 let stopRequested = false;
 
 export function requestScannerStop(): void {
   stopRequested = true;
 }
 
+/** Test-only. Resets the module-level stop flag so each test starts fresh. */
 export function __resetStopRequestedForTests(): void {
   stopRequested = false;
 }
@@ -39,17 +42,17 @@ export async function startScanner(config: ChainConfig) {
     });
   }
 
+  if (state.status === "halted") {
+    logger.error("scanner halted on boot, exiting");
+    return;
+  }
+
   let chunkState: ChunkState = {
     currentSize: config.initialChunkSize,
     consecutiveSuccess: 0,
   };
 
   while (!stopRequested) {
-    if (state.status === "halted") {
-      logger.error("scanner halted, exiting");
-      return;
-    }
-
     try {
       const safeHead = await getSafeHead(provider, config);
       const fromBlock = state.lastProcessedBlockNumber + 1;
@@ -60,7 +63,17 @@ export async function startScanner(config: ChainConfig) {
       }
 
       if (state.lastProcessedBlockHash) {
-        const firstBlock = await provider.getBlock(fromBlock);
+        const firstBlock = await withRetry(
+          () => provider.getBlock(fromBlock),
+          config.maxRetries,
+        );
+        if (!firstBlock?.parentHash) {
+          logger.warn("getBlock returned no parentHash, retrying next cycle", {
+            fromBlock,
+          });
+          await sleep(config.pollIntervalMs);
+          continue;
+        }
         if (
           firstBlock.parentHash.toLowerCase() !==
           state.lastProcessedBlockHash.toLowerCase()
@@ -140,7 +153,7 @@ export async function startScanner(config: ChainConfig) {
       logger.info("chunk processed", { lastBlock: lastBlock.number });
     } catch (error) {
       const cooldown =
-        error instanceof RetryGiveupError ? 30000 : config.pollIntervalMs;
+        error instanceof RetryGiveupError ? LONG_PAUSE_MS : config.pollIntervalMs;
       logger.error("scanner cycle error", { err: error, cooldownMs: cooldown });
       await sleep(cooldown);
     }
@@ -154,11 +167,17 @@ async function getSafeHead(
   config: ChainConfig,
 ): Promise<number> {
   if (config.finalityStrategy === "finalized") {
-    const block = await provider.getBlock("finalized");
+    const block = await withRetry(
+      () => provider.getBlock("finalized"),
+      config.maxRetries,
+    );
     return block.number;
   }
 
-  const latest = await provider.getBlockNumber();
+  const latest = await withRetry(
+    () => provider.getBlockNumber(),
+    config.maxRetries,
+  );
   return latest - config.confirmationDepth;
 }
 
