@@ -1,7 +1,6 @@
 import { Router } from "express";
-import { register, collectDefaultMetrics } from "prom-client";
-
-collectDefaultMetrics();
+import { register } from "prom-client";
+import "../metrics";
 
 const router = Router();
 

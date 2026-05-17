@@ -9,11 +9,13 @@ import metricsRouter from "./routes/metrics.routes";
 
 import { errorHandler } from "./middleware/error-handler";
 import { requestLogger } from "./middleware/request-logger";
+import { metricsMiddleware } from "./middleware/metrics.middleware";
 import { NotFoundError } from "./utils/http-errors";
 
 const app = express();
 app.use(express.json());
 app.use(requestLogger);
+app.use(metricsMiddleware);
 
 app.use("/api/events", eventsRouter);
 app.use("/api/health", healthRouter);

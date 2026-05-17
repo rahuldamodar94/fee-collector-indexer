@@ -1,9 +1,8 @@
 import http from "http";
 import mongoose from "mongoose";
-import { register, collectDefaultMetrics } from "prom-client";
+import { register } from "prom-client";
 import { getLogger } from "@fee-collector/shared";
-
-collectDefaultMetrics();
+import "./metrics";
 
 export function startHealthServer(port: number): http.Server {
   const server = http.createServer(async (req, res) => {

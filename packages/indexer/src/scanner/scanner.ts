@@ -13,6 +13,12 @@ import {
 } from "./parser";
 import { RetryGiveupError, withRetry } from "./retry";
 import { nextChunkSize, ChunkState, isChunkTooLarge } from "./chunk-sizer";
+import {
+  eventsIngestedTotal,
+  chainHeadLagBlocks,
+  rpcErrorsTotal,
+  reorgDetectedTotal,
+} from "../metrics";
 
 const LONG_PAUSE_MS = 30_000;
 
@@ -83,6 +89,7 @@ export async function startScanner(config: ChainConfig) {
             parentHash: firstBlock.parentHash,
             blockNumber: fromBlock,
           });
+          reorgDetectedTotal.inc({ chain: config.chainName });
           state.status = "halted";
           state.lastError = `reorg detected: stored=${state.lastProcessedBlockHash.toLowerCase()} parent=${firstBlock.parentHash.toLowerCase()}`;
           state.lastErrorAt = new Date();
@@ -97,6 +104,7 @@ export async function startScanner(config: ChainConfig) {
       );
 
       const blocksBehind = safeHead - state.lastProcessedBlockNumber;
+      chainHeadLagBlocks.set({ chain: config.chainName }, blocksBehind);
 
       logger.info("fetching chunk", {
         fromBlock,
@@ -122,6 +130,10 @@ export async function startScanner(config: ChainConfig) {
             config,
             blocksBehind,
           );
+          rpcErrorsTotal.inc({
+            chain: config.chainName,
+            type: "chunk_too_large",
+          });
           continue;
         }
         throw err;
@@ -137,6 +149,9 @@ export async function startScanner(config: ChainConfig) {
             throw err;
           }
         }
+        // Overcounts on retried cycles where some rows hit 11000; accepted
+        // because duplicates only occur on crash-mid-cycle restarts.
+        eventsIngestedTotal.inc({ chain: config.chainName }, parsed.length);
       }
 
       const lastBlock = await withRetry(
@@ -154,6 +169,10 @@ export async function startScanner(config: ChainConfig) {
     } catch (error) {
       const cooldown =
         error instanceof RetryGiveupError ? LONG_PAUSE_MS : config.pollIntervalMs;
+      rpcErrorsTotal.inc({
+        chain: config.chainName,
+        type: error instanceof RetryGiveupError ? "retry_exhausted" : "unknown",
+      });
       logger.error("scanner cycle error", { err: error, cooldownMs: cooldown });
       await sleep(cooldown);
     }
