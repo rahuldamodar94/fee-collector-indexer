@@ -1,5 +1,7 @@
 # fee-collector-indexer
 
+[![CI](https://github.com/rahuldamodar94/fee-collector-indexer/actions/workflows/ci.yml/badge.svg)](https://github.com/rahuldamodar94/fee-collector-indexer/actions/workflows/ci.yml)
+
 Indexer and REST API for `FeesCollected` events emitted by the LiFi FeeCollector contract on Polygon. Events are persisted to MongoDB and exposed through an HTTP endpoint filterable by integrator.
 
 The indexer scans the contract from a configured starting block, follows the chain head, and stores each event idempotently. The API serves events to clients with cursor-based pagination. Scope is intentionally narrow: one event type, one read endpoint, no write API.
@@ -105,11 +107,10 @@ Returns `FeesCollected` events filtered by integrator, newest first, paginated b
 {
   "error": {
     "code": "bad_request",
-    "message": "invalid query",
+    "message": "Invalid request parameters",
     "details": [
       {
-        "code": "invalid_type",
-        "path": ["integrator"],
+        "field": "integrator",
         "message": "Required"
       }
     ]
@@ -193,6 +194,15 @@ npx ts-node packages/api/src/index.ts
 ```
 
 Requires `.env` to have `MONGO_URL=mongodb://localhost:27017` (the value Compose overrides inside containers). A local Mongo instance on the default port is the simplest setup.
+
+## Testing
+
+```bash
+npm test          # runs vitest across all packages
+npm run typecheck # runs tsc --noEmit across all packages
+```
+
+Unit tests cover the pure modules: cursor encode and decode, retry classification, log parser, chunk sizer. Integration tests cover the API HTTP stack and the scanner against in-memory MongoDB via `mongodb-memory-server`. 29 tests total, runs in under 10 seconds locally.
 
 ## Design decisions
 
