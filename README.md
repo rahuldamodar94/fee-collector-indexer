@@ -43,15 +43,13 @@ The indexer scans the contract from a configured starting block, follows the cha
                          Client
 ```
 
-Producer side: the indexer is a long-running Node process that polls a Polygon RPC for `FeesCollected` logs in chunks and writes them, along with its own cursor, to MongoDB. Storage: a single events collection with a unique compound index for idempotency and a secondary compound index for the integrator query, plus a separate `indexer_states` collection holding the per-chain cursor and parent block hash. Consumer side: an Express server with one read endpoint and cursor pagination. The indexer reads only up to the `finalized` tag and verifies the parent hash of each new chunk against its stored cursor; on mismatch it halts and waits for human investigation.
-
 ## Quick start
 
 ```bash
 git clone https://github.com/rahuldamodar94/fee-collector-indexer.git
 cd fee-collector-indexer
 cp .env.example .env          # then edit RPC_URLS with your provider
-docker compose up -d
+npm start                     # docker compose up -d --build
 
 # wait ~15 seconds for the indexer to start backfilling, then:
 curl "http://localhost:3000/api/events?integrator=0xbD6C7B0d2f68c2b7805d88388319cfB6EcB50eA9&limit=5"
@@ -60,6 +58,19 @@ curl "http://localhost:3000/api/events?integrator=0xbD6C7B0d2f68c2b7805d88388319
 Expected response: JSON with `data` and `pagination`. If the integrator has no events yet, `data` is an empty array and `pagination.hasMore` is `false`.
 
 See [`.env.example`](.env.example) for the full set of configurable variables and inline comments. `RPC_URLS` is the only value without a working default; everything else boots on `cp .env.example .env`. Inside Compose, `MONGO_URL` and `NODE_ENV` are overridden so the same `.env` also works for running outside Docker.
+
+## Common commands
+
+Root `package.json` scripts wrap the most common operator actions:
+
+| Command | What it does |
+|---|---|
+| `npm start` | Build images and start all services (`docker compose up -d --build`) |
+| `npm stop` | Stop all services, keep data volumes (`docker compose down`) |
+| `npm reset` | Stop and remove containers + volumes (wipes Mongo data) |
+| `npm logs` | Tail all service logs (`docker compose logs -f`) |
+| `npm test` | Run vitest across all packages |
+| `npm run typecheck` | Run `tsc --noEmit` across all packages |
 
 ## API
 
@@ -174,12 +185,9 @@ One document per chain. The indexer reads on boot and writes after each successf
 ├── docker-compose.yml
 ├── .env.example
 ├── tsconfig.base.json
-└── README.md
+├── README.md
+└── DESIGN.md
 ```
-
-- `shared` holds Mongoose models, the Zod env schema, the Winston logger factory, and chain config types. Both other packages depend on it. Index creation via `syncIndexes()` is the responsibility of the indexer alone; the API is a pure reader of whatever schema state exists.
-- `indexer` is a single Node process per chain. The scanner is one long-running loop; surrounding files handle RPC client setup, retry classification, and chunk-size adaptation.
-- `api` follows a routes / controllers / services / repositories split. Validators use Zod; cursor encode and decode share a single utility.
 
 ## Running outside Docker
 
@@ -204,27 +212,15 @@ npm run typecheck # runs tsc --noEmit across all packages
 
 Unit tests cover the pure modules: cursor encode and decode, retry classification, log parser, chunk sizer. Integration tests cover the API HTTP stack and the scanner against in-memory MongoDB via `mongodb-memory-server`. 29 tests total, runs in under 10 seconds locally.
 
-## Design decisions
+## Design
 
-Five decisions that shape the rest of the code.
-
-**Finality-anchored indexing with panic halt on reorg.** The scanner reads only up to a safe head. On chains that expose a `finalized` tag (Polygon post-Rio, Ethereum), `FINALITY_STRATEGY=finalized` queries `eth_getBlockByNumber("finalized")`; on chains that do not, `FINALITY_STRATEGY=confirmations` uses `latestBlock - CONFIRMATION_DEPTH` as the safe head. On each new chunk the scanner fetches the first block and verifies its parent hash matches the stored cursor. On mismatch the scanner sets `status: halted` on the state document, records the conflicting hashes, and exits. The system does not roll back automatically. Optimistic indexing with rollback was the alternative; it adds a real branch of code that exists for a contingency that, under the finalized tag, should not happen. If finality reverses or an RPC misbehaves, human investigation is the right response.
-
-**Idempotent inserts via a unique compound index, not Mongo transactions.** Each event row is uniquely identified by `(chainId, transactionHash, logIndex)`. The scanner uses `insertMany({ ordered: false })`, and on `BulkWriteError` treats duplicate-key entries as already-persisted. The combination yields exactly-once-effect delivery without a replica set. Transactions would have cost performance and infrastructure for no correctness gain.
-
-**Separate `indexer_states` collection rather than deriving the cursor from `MAX(blockNumber)`.** Derived state cannot store the parent hash needed for the reorg check, and cannot distinguish "scanned and found zero events" from "never scanned." A single document per chain costs nothing and removes both ambiguities. It also gives a natural place to record `status`, `lastError`, and `lastErrorAt` when the scanner halts.
-
-**Cursor pagination on `(blockNumber, logIndex)`, not `skip` / `limit`.** Offset pagination is O(N) on the skipped prefix and unstable when new events insert during a paginating session. The cursor is base64url-encoded JSON validated server-side; clients treat it as opaque. The compound index on `(integrator, blockNumber desc, logIndex desc)` makes the lookup index-served on every page.
-
-The cursor deliberately does not include `chainId`. The compose default ships a single chain (Polygon), so the same `(blockNumber, logIndex)` pair cannot collide for one integrator. If multi-chain indexing is enabled later (one indexer process per chain, all writing to the same `events` collection), the `/api/events` query will be made stricter: `chainId` becomes a required query parameter so cross-chain queries are not possible in a single request. Putting `chainId` inside the cursor was the alternative; rejected because it complicates the cursor and serves a use case (cross-chain pagination for one integrator) that is not on the roadmap.
-
-**Adaptive chunk sizing for `eth_getLogs`.** RPC providers cap response sizes differently and their error messages vary: "too many results", "log response size exceeded", "query returned more than 10000 results", plus HTTP 504 and ethers `TIMEOUT` when the response is genuinely too large to deliver in time. The scanner classifies all of these as "shrink the chunk", halves the size, and retries immediately without consuming the retry budget. After ten consecutive successes the chunk grows by 1.5x, capped at `MAX_CHUNK_SIZE`. Near the head it pins to `MIN_CHUNK_SIZE` for latency. Fixed sizing was the alternative; no single value works for both backfill (where you want large chunks for throughput) and head-following (where you want small chunks for latency).
+See [DESIGN.md](./DESIGN.md) for the architectural decisions and trade-offs that shape the rest of the code.
 
 ## References
 
 - FeeCollector contract on Polygon: [`0xbD6C7B0d2f68c2b7805d88388319cfB6EcB50eA9`](https://polygonscan.com/address/0xbD6C7B0d2f68c2b7805d88388319cfB6EcB50eA9)
 - Event signature: `FeesCollected(address indexed _token, address indexed _integrator, uint256 _integratorFee, uint256 _lifiFee)`
-- ABI source repo: [`github.com/lifinance/lifi-contract-types`](https://github.com/lifinance/lifi-contract-types) (not depended on; see [Design decisions](#design-decisions))
+- ABI source repo: [`github.com/lifinance/lifi-contract-types`](https://github.com/lifinance/lifi-contract-types) (not depended on; see [DESIGN.md](./DESIGN.md))
 
 ## Operational notes
 
