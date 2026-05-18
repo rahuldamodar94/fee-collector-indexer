@@ -68,6 +68,7 @@ export async function startScanner(config: ChainConfig) {
         continue;
       }
 
+      // Safety net in case the RPC lies or finality flips. See DESIGN.md.
       if (state.lastProcessedBlockHash) {
         const firstBlock = await withRetry(
           () => provider.getBlock(fromBlock),
@@ -124,6 +125,7 @@ export async function startScanner(config: ChainConfig) {
         );
       } catch (err) {
         if (isChunkTooLarge(err)) {
+          // Don't burn retries on this — it's a sizing issue, not a flaky RPC.
           chunkState = nextChunkSize(
             "too-large",
             chunkState,
@@ -144,13 +146,14 @@ export async function startScanner(config: ChainConfig) {
           logger.info("inserting events", { count: parsed.length });
           await FeeCollectedEventModel.insertMany(parsed, { ordered: false });
         } catch (err) {
+          // 11000 is expected on retries (that's how idempotency works here).
+          // Anything else is a real failure.
           if ((err as { code?: number }).code !== 11000) {
             logger.error("insert failed", { err });
             throw err;
           }
         }
-        // Overcounts on retried cycles where some rows hit 11000; accepted
-        // because duplicates only occur on crash-mid-cycle restarts.
+        // Slightly overcounts when retries hit 11000 — only matters on crash-mid-cycle restarts.
         eventsIngestedTotal.inc({ chain: config.chainName }, parsed.length);
       }
 

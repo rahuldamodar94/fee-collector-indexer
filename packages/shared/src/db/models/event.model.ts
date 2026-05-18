@@ -12,6 +12,8 @@ export class FeeCollectedEvent {
   @prop({ required: true })
   chainId!: number;
 
+  // lowercase: true only applies on insert, not on query. The API
+  // validator lowercases the filter to keep both sides aligned.
   @prop({ required: true, lowercase: true })
   integrator!: string;
 

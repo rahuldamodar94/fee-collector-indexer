@@ -23,6 +23,8 @@ export function isChunkTooLarge(err: unknown): boolean {
 
 export type ChunkOutcome = "success" | "too-large";
 
+// Adaptive sizing knobs. Grow after 10 wins, pin to min near the head.
+// See DESIGN.md.
 const GROWTH_THRESHOLD = 10;
 const GROWTH_MULTIPLIER = 1.5;
 const NEAR_HEAD_BLOCKS = 100;

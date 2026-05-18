@@ -17,6 +17,9 @@ export function metricsMiddleware(
     const durationSeconds =
       Number(process.hrtime.bigint() - start) / 1_000_000_000;
 
+    // req.route.path alone is just "/" (each router mounts at "/"), so we
+    // stick baseUrl in front. Unmatched paths get one label so the
+    // cardinality doesn't blow up on random 404s.
     const route = req.route
       ? req.baseUrl + (req.route.path === "/" ? "" : req.route.path)
       : "unmatched";

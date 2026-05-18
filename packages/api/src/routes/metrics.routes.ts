@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { register } from "prom-client";
+// Side-effect import — registers metrics before /api/metrics gets hit.
 import "../metrics";
 
 const router = Router();

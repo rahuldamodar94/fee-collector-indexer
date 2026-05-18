@@ -1,3 +1,4 @@
+// Required by @typegoose/typegoose at runtime. Must load before any model.
 import "reflect-metadata";
 import dotenv from "dotenv";
 dotenv.config();

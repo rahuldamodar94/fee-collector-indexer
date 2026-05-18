@@ -9,6 +9,9 @@ export async function findEvents(query: EventsQuery): Promise<EventsResult> {
     filter.chainId = query.chainId;
   }
 
+  // Items strictly before the cursor. The $or covers "older block" or
+  // "same block, earlier log". Served by the integrator+blockNumber+logIndex
+  // index.
   if (query.cursor) {
     filter.$or = [
       { blockNumber: { $lt: query.cursor.blockNumber } },
@@ -21,7 +24,7 @@ export async function findEvents(query: EventsQuery): Promise<EventsResult> {
 
   const docs = await FeeCollectedEventModel.find(filter)
     .sort({ blockNumber: -1, logIndex: -1 })
-    .limit(query.limit + 1)
+    .limit(query.limit + 1) // +1 tells us if there's another page
     .select({
       chainId: 1,
       blockNumber: 1,

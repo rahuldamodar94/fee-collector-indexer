@@ -2,6 +2,8 @@ import { z } from "zod";
 import { decodeCursor } from "../utils/cursor";
 import { BadRequestError } from "../utils/http-errors";
 
+// Convert cursor decode failures into Zod issues so they come back as
+// a clean 400, not a 500.
 const cursorSchema = z
   .string()
   .optional()

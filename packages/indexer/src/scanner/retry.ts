@@ -24,6 +24,9 @@ export async function withRetry<T>(
       const status = e?.status;
       const code = e?.code;
 
+      // 504 and TIMEOUT aren't here on purpose — in practice they mean
+      // "response too big", so isChunkTooLarge handles them at the call site
+      // by shrinking the chunk instead.
       const isTransient =
         status === 429 ||
         status === 502 ||

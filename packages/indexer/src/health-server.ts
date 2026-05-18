@@ -2,6 +2,7 @@ import http from "http";
 import mongoose from "mongoose";
 import { register } from "prom-client";
 import { getLogger } from "@fee-collector/shared";
+// Side-effect import — registers metrics before /indexer/metrics gets hit.
 import "./metrics";
 
 export function startHealthServer(port: number): http.Server {
