@@ -2,9 +2,9 @@
 
 [![CI](https://github.com/rahuldamodar94/fee-collector-indexer/actions/workflows/ci.yml/badge.svg)](https://github.com/rahuldamodar94/fee-collector-indexer/actions/workflows/ci.yml)
 
-Indexer and REST API for `FeesCollected` events emitted by the LiFi FeeCollector contract on Polygon. Events are persisted to MongoDB and exposed through an HTTP endpoint filterable by integrator.
+Indexer and REST API for `FeesCollected` events emitted by the LiFi FeeCollector contract on Polygon. Events are stored in MongoDB and served over HTTP, filterable by integrator.
 
-The indexer scans the contract from a configured starting block, follows the chain head, and stores each event idempotently. The API serves events to clients with cursor-based pagination. Scope is intentionally narrow: one event type, one read endpoint, no write API.
+The indexer scans the contract from a configured starting block, follows the chain head, and stores each event idempotently. The API serves events to clients with cursor-based pagination. Scope is narrow: one event type, one read endpoint, no write API.
 
 ## Architecture
 
@@ -57,7 +57,7 @@ curl "http://localhost:3000/api/events?integrator=0xbD6C7B0d2f68c2b7805d88388319
 
 Expected response: JSON with `data` and `pagination`. If the integrator has no events yet, `data` is an empty array and `pagination.hasMore` is `false`.
 
-See [`.env.example`](.env.example) for the full set of configurable variables and inline comments. `RPC_URLS` is the only value without a working default; everything else boots on `cp .env.example .env`. Inside Compose, `MONGO_URL` and `NODE_ENV` are overridden so the same `.env` also works for running outside Docker.
+See [`.env.example`](.env.example) for all the configurable variables and inline comments. `RPC_URLS` is the only value without a working default; everything else boots on `cp .env.example .env`. Inside Compose, `MONGO_URL` and `NODE_ENV` are overridden so the same `.env` also works for running outside Docker.
 
 ## Common commands
 
@@ -129,7 +129,7 @@ Returns `FeesCollected` events filtered by integrator, newest first, paginated b
 }
 ```
 
-The cursor is opaque to the client. Internally it is base64url-encoded JSON `{ "blockNumber": number, "logIndex": number }`. The server validates the shape on every request and rejects malformed values with a `400`.
+The cursor is opaque to the client. Internally it's base64url-encoded JSON `{ "blockNumber": number, "logIndex": number }`. The server checks the shape on every request and rejects malformed values with a `400`.
 
 ### `GET /api/health`
 
@@ -201,7 +201,7 @@ npx ts-node packages/indexer/src/index.ts
 npx ts-node packages/api/src/index.ts
 ```
 
-Requires `.env` to have `MONGO_URL=mongodb://localhost:27017` (the value Compose overrides inside containers). A local Mongo instance on the default port is the simplest setup.
+Requires `.env` to have `MONGO_URL=mongodb://localhost:27017` (Compose overrides this inside containers). Easiest setup: a local Mongo on the default port.
 
 ## Testing
 
@@ -226,9 +226,9 @@ See [DESIGN.md](./DESIGN.md) for the architectural decisions and trade-offs that
 
 **Ports.** API on `3000`, indexer health and metrics on `9090`, Mongo on host port `27018` (container-internal `27017`) so it coexists with a local `mongod` on `27017`, Prometheus UI on host port `9091`. Inside the compose network, services reach Mongo as `mongo:27017`. If host port `27018` is already in use, remap it in `docker-compose.yml`; the host-side port is the only knob.
 
-**Metrics.** A Prometheus container ships in the same `docker-compose.yml`. It scrapes the indexer's `/indexer/metrics` and the API's `/api/metrics` on the compose network. The UI is available at `http://localhost:9091` after `docker compose up -d`. Both endpoints expose `prom-client`'s default Node metrics (event-loop lag, GC, memory) plus a small custom set: the indexer emits counters and gauges for events ingested, chain-head lag, classified RPC errors, and reorgs detected; the API emits an `http_requests_total` counter and an `http_request_duration_seconds` histogram, labeled by method/route/status.
+**Metrics.** A Prometheus container ships in the same `docker-compose.yml`. It scrapes the indexer's `/indexer/metrics` and the API's `/api/metrics` on the compose network. The UI is available at `http://localhost:9091` after `docker compose up -d`. Both endpoints expose `prom-client`'s default Node metrics (event-loop lag, GC, memory) plus a custom set. Indexer: counters and gauges for events ingested, chain-head lag, RPC errors by type, and reorgs. API: `http_requests_total` counter and `http_request_duration_seconds` histogram, labeled by method/route/status.
 
-**Graceful shutdown.** SIGTERM and SIGINT trigger a clean exit. The indexer flips an internal flag that breaks the scan loop between iterations, then disconnects Mongo. The API drains in-flight requests via `server.close` (with `closeIdleConnections` for keep-alive sockets), then disconnects Mongo. Both services exit with code 0 on a clean shutdown. The compose `stop_grace_period: 20s` gives Docker enough headroom past any reasonable cleanup before SIGKILL.
+**Graceful shutdown.** SIGTERM and SIGINT trigger a clean exit. The indexer flips an internal flag that breaks the scan loop between iterations, then disconnects Mongo. The API drains in-flight requests via `server.close` (with `closeIdleConnections` for keep-alive sockets), then disconnects Mongo. Both services exit with code 0 on a clean shutdown. The compose `stop_grace_period: 20s` is the SIGKILL timer — long enough for cleanup to finish.
 
 **Multi-chain.** The compose default ships Polygon only. The image itself is chain-agnostic: every chain-specific knob (`CHAIN_ID`, `CHAIN_NAME`, `RPC_URLS`, `START_BLOCK`, `FINALITY_STRATEGY`, `POLL_INTERVAL_MS`) is env-driven. To run a second chain locally, copy `.env` to `.env.ethereum`, edit those values, and declare a second indexer service in `docker-compose.yml` pointing at the new env file:
 
@@ -247,4 +247,4 @@ indexer-ethereum:
   restart: on-failure:5
 ```
 
-No code changes required. In production, the same pattern applies via your orchestrator of choice — one container per chain, sharing the Mongo backend and API. One indexer process per chain by design: failure isolation and independent scaling.
+No code changes needed. In production, run one container per chain via whatever orchestrator you use; they share Mongo and the API. One indexer per chain keeps failures isolated and lets each chain scale independently.
