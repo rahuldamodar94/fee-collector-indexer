@@ -14,8 +14,8 @@ The indexer scans the contract from a configured starting block, follows the cha
                             │  (Tenderly / │
                             │   Ankr / …)  │
                             └──────┬───────┘
-                                   │ eth_getLogs
-                                   │ eth_getBlockByNumber
+                                   │ getLogs
+                                   │ getBlock
                                    ▼
    ┌──────────────────────────────────────────────────────┐
    │                       Indexer                        │
@@ -56,7 +56,7 @@ cp .env.example .env          # then edit RPC_URLS with your provider
 npm start                     # docker compose up -d --build
 
 # wait ~15 seconds for the indexer to start backfilling, then:
-curl "http://localhost:3000/api/events?integrator=0xbD6C7B0d2f68c2b7805d88388319cfB6EcB50eA9&chainId=137&limit=5"
+curl "http://localhost:3000/api/events?integrator=0x4dd665c59007fd825d98fddabf7759f650f2ace0&chainId=137&limit=1"
 ```
 
 Expected response: JSON with `data` and `pagination`. If the integrator has no events yet, `data` is an empty array and `pagination.hasMore` is `false`.
@@ -98,20 +98,20 @@ Returns `FeesCollected` events filtered by integrator, newest first, paginated b
   "data": [
     {
       "chainId": 137,
-      "blockNumber": 79123456,
-      "blockTimestamp": "2026-04-12T11:42:18.000Z",
-      "transactionHash": "0x...",
-      "logIndex": 47,
-      "integrator": "0xbd6c7b0d2f68c2b7805d88388319cfb6ecb50ea9",
-      "token": "0x0000000000000000000000000000000000000000",
-      "integratorFee": "12345000000000000",
-      "lifiFee": "23456000000000000"
+      "integrator": "0x4dd665c59007fd825d98fddabf7759f650f2ace0",
+      "blockNumber": 83705784,
+      "transactionHash": "0xb948b5fc23c33534e94cdc7c658afb2e9d18e9cfc13c85828755bc171e214e3b",
+      "logIndex": 38,
+      "blockTimestamp": "2026-03-03T09:53:19.000Z",
+      "token": "0x3c499c542cef5e3811e1192ce70d8cc03d5c3359",
+      "integratorFee": "25501",
+      "lifiFee": "4500"
     }
   ],
   "pagination": {
-    "limit": 50,
+    "limit": 1,
     "hasMore": true,
-    "nextCursor": "eyJibG9ja051bWJlciI6Nzkx..."
+    "nextCursor": "eyJibG9ja051bWJlciI6ODM3MDU3ODQsImxvZ0luZGV4IjozOH0"
   }
 }
 ```
@@ -151,7 +151,7 @@ Indexer container, port `9090`. `/indexer/health` matches the API shape; `/index
 |---|---|---|
 | `chainId` | number | |
 | `blockNumber` | number | |
-| `blockTimestamp` | Date | from `eth_getBlockByNumber` |
+| `blockTimestamp` | Date | from `getBlock(number)` |
 | `transactionHash` | string | |
 | `logIndex` | number | |
 | `integrator` | string | lowercased on insert |
@@ -183,9 +183,26 @@ One document per chain. The indexer reads on boot and writes after each successf
 ```text
 .
 ├── packages/
-│   ├── shared/        # env loader, mongoose models, logger, chain config
-│   ├── indexer/       # polling loop, retry, chunk sizing, RPC provider
-│   └── api/           # Express, routes/controllers/services/repositories
+│   ├── shared/src/
+│   │   ├── config/       # env loader, chain config
+│   │   ├── db/           # mongoose models + connection
+│   │   └── logger.ts
+│   ├── indexer/src/
+│   │   ├── scanner/      # polling loop, chunk sizer, rpc client, retry, parser
+│   │   ├── health-server.ts
+│   │   ├── metrics.ts
+│   │   └── index.ts
+│   └── api/src/
+│       ├── routes/
+│       ├── controllers/
+│       ├── services/
+│       ├── repositories/
+│       ├── validators/
+│       ├── middleware/   # request logger, metrics, error handler
+│       ├── utils/        # cursor encode/decode, http errors
+│       ├── app.ts
+│       └── index.ts
+├── infra/prometheus/
 ├── docker-compose.yml
 ├── .env.example
 ├── tsconfig.base.json

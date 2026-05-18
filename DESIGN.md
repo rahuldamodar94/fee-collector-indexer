@@ -4,7 +4,7 @@ Why the codebase is shaped this way. The [README](./README.md) covers what the c
 
 ## Five decisions
 
-**Finality-anchored indexing with panic halt on reorg.** The scanner reads only up to a safe head (the `finalized` tag where available, otherwise `latest - CONFIRMATION_DEPTH`). On each new chunk it fetches the first block and verifies its parent hash matches the stored cursor. On mismatch the scanner sets `status: halted` on the state document, records the conflicting hashes, and exits. The system does not roll back on its own. The alternative was optimistic indexing with rollback — a whole code path for something that, under the finalized tag, shouldn't happen. If finality reverses or an RPC misbehaves, a human should look at it.
+**Finality-anchored indexing with panic halt on reorg.** Safe head is `finalized` where available, otherwise `latest - CONFIRMATION_DEPTH`. The scanner never reads past it. Integrators consume this data for fee accounting, not a live UI, so a few minutes of lag is fine and wrong numbers are not. Correctness over freshness, on purpose. Rolling back on reorg would be a whole code path for something the finalized tag already prevents, so it stays out. As a backstop, every chunk's first block is checked against the stored parent hash; on mismatch the scanner halts the chain and exits.
 
 **Idempotent inserts via a unique compound index, not Mongo transactions.** Each event row is uniquely identified by `(chainId, transactionHash, logIndex)`. The scanner uses `insertMany({ ordered: false })`, and on `BulkWriteError` treats duplicate-key entries as already-persisted. Together that gives us exactly-once effect without a replica set. Transactions would have cost performance and infra for no correctness gain.
 
@@ -22,14 +22,7 @@ The cursor deliberately does not include `chainId`. `chainId` is a required quer
 
 ## RPC client setup
 
-The indexer uses `ethers.providers.JsonRpcProvider`, not `StaticJsonRpcProvider`. The non-static one verifies the RPC's reported chain ID against `CHAIN_ID` at boot and throws on mismatch. Bad config fails immediately rather than corrupting data. Costs one `eth_chainId` call per provider lifetime.
-
 `FallbackProvider` wraps multiple RPC URLs for resilience to provider outages. A single-URL case bypasses `FallbackProvider` and uses one `JsonRpcProvider` directly.
 
 A separate `JsonRpcBatchProvider` handles block-timestamp fetches inside `fetchAndParseChunk`. One chunk can fan out to dozens of `eth_getBlockByNumber` calls, and batching them into JSON-RPC arrays saves a lot of round trips. The batch provider uses only the first RPC URL because `JsonRpcBatchProvider` doesn't play well with `FallbackProvider`. Batch failures still go through `withRetry`, and a primary outage shows up in `fee_collector_rpc_errors_total{type="retry_exhausted"}` before users notice.
 
-## Schema choices
-
-**Wei amounts as strings, not numbers.** `integratorFee` and `lifiFee` are stored as strings. JavaScript's `Number` truncates above 2^53, which is well below typical wei values for popular tokens. Strings keep the full value; consumer parses to `BigNumber` if they need to.
-
-**`blockHash` deliberately omitted from each event row.** The reorg-detection path uses `lastProcessedBlockHash` on the per-chain `indexer_states` document, not per-event hashes. Storing 32 bytes per event for a field nothing reads would waste disk. If forensics ever needs it, a migration adds the field without breaking existing data or consumers.
