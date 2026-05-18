@@ -23,7 +23,7 @@ export const eventsQuerySchema = z.object({
     .regex(/^0x[a-fA-F0-9]{40}$/, "invalid integrator address")
     .transform((s) => s.toLowerCase()),
 
-  chainId: z.coerce.number().int().positive().optional(),
+  chainId: z.coerce.number().int().positive(),
 
   limit: z.coerce.number().int().min(1).max(200).default(50),
 

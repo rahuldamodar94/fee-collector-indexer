@@ -97,7 +97,9 @@ describe("GET /api/events", () => {
   });
 
   it("returns empty data and null cursor for a valid query against an empty DB", async () => {
-    const res = await request(app).get("/api/events").query({ integrator });
+    const res = await request(app)
+      .get("/api/events")
+      .query({ integrator, chainId: 137 });
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
@@ -113,7 +115,9 @@ describe("GET /api/events", () => {
       { blockNumber: 300 },
     ]);
 
-    const res = await request(app).get("/api/events").query({ integrator });
+    const res = await request(app)
+      .get("/api/events")
+      .query({ integrator, chainId: 137 });
 
     expect(res.status).toBe(200);
     expect(res.body.data).toHaveLength(3);
@@ -145,7 +149,12 @@ describe("GET /api/events", () => {
       pages += 1;
       const res = await request(app)
         .get("/api/events")
-        .query({ integrator, limit: 2, ...(cursor ? { cursor } : {}) });
+        .query({
+          integrator,
+          chainId: 137,
+          limit: 2,
+          ...(cursor ? { cursor } : {}),
+        });
 
       expect(res.status).toBe(200);
       for (const row of res.body.data) seen.push(row.blockNumber);

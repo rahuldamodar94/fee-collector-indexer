@@ -1,6 +1,6 @@
 export interface EventsQuery {
   integrator: string;
-  chainId?: number;
+  chainId: number;
   limit: number;
   cursor?: { blockNumber: number; logIndex: number };
 }

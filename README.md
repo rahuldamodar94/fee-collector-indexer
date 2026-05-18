@@ -52,7 +52,7 @@ cp .env.example .env          # then edit RPC_URLS with your provider
 npm start                     # docker compose up -d --build
 
 # wait ~15 seconds for the indexer to start backfilling, then:
-curl "http://localhost:3000/api/events?integrator=0xbD6C7B0d2f68c2b7805d88388319cfB6EcB50eA9&limit=5"
+curl "http://localhost:3000/api/events?integrator=0xbD6C7B0d2f68c2b7805d88388319cfB6EcB50eA9&chainId=137&limit=5"
 ```
 
 Expected response: JSON with `data` and `pagination`. If the integrator has no events yet, `data` is an empty array and `pagination.hasMore` is `false`.
@@ -83,7 +83,7 @@ Returns `FeesCollected` events filtered by integrator, newest first, paginated b
 | Param | Required | Type | Default | Description |
 |---|---|---|---|---|
 | `integrator` | yes | hex address | — | 0x-prefixed, case-insensitive. Lowercased server-side |
-| `chainId` | no | integer | — | If omitted, returns events from every indexed chain |
+| `chainId` | yes | integer | — | Filter by chain. Cross-chain pagination isn't supported |
 | `limit` | no | integer | `50` | 1 to 200 |
 | `cursor` | no | base64url | — | From the previous response, the `pagination.nextCursor` field |
 
@@ -226,7 +226,7 @@ See [DESIGN.md](./DESIGN.md) for the architectural decisions and trade-offs that
 
 **Ports.** API on `3000`, indexer health and metrics on `9090`, Mongo on host port `27018` (container-internal `27017`) so it coexists with a local `mongod` on `27017`, Prometheus UI on host port `9091`. Inside the compose network, services reach Mongo as `mongo:27017`. If host port `27018` is already in use, remap it in `docker-compose.yml`; the host-side port is the only knob.
 
-**Metrics.** A Prometheus container ships in the same `docker-compose.yml`. It scrapes the indexer's `/indexer/metrics` and the API's `/api/metrics` on the compose network. The UI is available at `http://localhost:9091` after `docker compose up -d`. Both endpoints expose `prom-client`'s default Node metrics (event-loop lag, GC, memory) plus a custom set. Indexer: counters and gauges for events ingested, chain-head lag, RPC errors by type, and reorgs. API: `http_requests_total` counter and `http_request_duration_seconds` histogram, labeled by method/route/status.
+**Metrics.** A Prometheus container ships in the same `docker-compose.yml`. It scrapes the indexer's `/indexer/metrics` and the API's `/api/metrics` on the compose network. The UI is available at `http://localhost:9091` after `docker compose up -d`. Both endpoints expose `prom-client`'s default Node metrics (event-loop lag, GC, memory) plus a custom set. Indexer: counters and gauges for events ingested, chain-head lag, RPC errors by type, and reorgs. API: `fee_collector_http_requests_total` counter and `fee_collector_http_request_duration_seconds` histogram, labeled by method/route/status.
 
 **Graceful shutdown.** SIGTERM and SIGINT trigger a clean exit. The indexer flips an internal flag that breaks the scan loop between iterations, then disconnects Mongo. The API drains in-flight requests via `server.close` (with `closeIdleConnections` for keep-alive sockets), then disconnects Mongo. Both services exit with code 0 on a clean shutdown. The compose `stop_grace_period: 20s` is the SIGKILL timer — long enough for cleanup to finish.
 

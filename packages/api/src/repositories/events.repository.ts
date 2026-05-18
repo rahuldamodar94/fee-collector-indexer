@@ -2,12 +2,10 @@ import { FeeCollectedEventModel } from "@fee-collector/shared";
 import type { EventsQuery, EventsResult } from "../types/events";
 
 export async function findEvents(query: EventsQuery): Promise<EventsResult> {
-  const filter: Record<string, unknown> = {};
-  filter.integrator = query.integrator;
-
-  if (query.chainId !== undefined) {
-    filter.chainId = query.chainId;
-  }
+  const filter: Record<string, unknown> = {
+    integrator: query.integrator,
+    chainId: query.chainId,
+  };
 
   // Items strictly before the cursor. The $or covers "older block" or
   // "same block, earlier log". Served by the integrator+blockNumber+logIndex
