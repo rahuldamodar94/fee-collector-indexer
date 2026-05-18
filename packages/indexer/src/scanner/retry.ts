@@ -49,6 +49,5 @@ export async function withRetry<T>(
     }
   }
 
-  getLogger().error("retry budget exhausted", { attempts: maxRetries });
   throw new RetryGiveupError(`retry gave up after ${maxRetries} attempts`);
 }

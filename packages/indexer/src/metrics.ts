@@ -14,7 +14,11 @@ export const chainHeadLagBlocks = new Gauge({
   labelNames: ["chain"] as const,
 });
 
-export type RpcErrorType = "chunk_too_large" | "retry_exhausted" | "unknown";
+export type RpcErrorType =
+  | "chunk_too_large"
+  | "retry_exhausted"
+  | "missing_parent_hash"
+  | "unknown";
 
 export const rpcErrorsTotal = new Counter({
   name: "fee_collector_rpc_errors_total",

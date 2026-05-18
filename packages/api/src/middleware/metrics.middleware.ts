@@ -6,7 +6,7 @@ export function metricsMiddleware(
   res: Response,
   next: NextFunction,
 ): void {
-  if (req.path.startsWith("/api/metrics")) {
+  if (req.path === "/api/metrics") {
     next();
     return;
   }

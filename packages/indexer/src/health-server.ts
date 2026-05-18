@@ -26,6 +26,11 @@ export function startHealthServer(port: number): http.Server {
     res.end("not found");
   });
 
+  server.on("error", (err) => {
+    getLogger().error("health server failed to bind", { err, port });
+    process.exit(1);
+  });
+
   server.listen(port, () => {
     getLogger().info("health server listening", { port });
   });

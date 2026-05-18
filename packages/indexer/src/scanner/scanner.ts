@@ -78,6 +78,10 @@ export async function startScanner(config: ChainConfig) {
           logger.warn("getBlock returned no parentHash, retrying next cycle", {
             fromBlock,
           });
+          rpcErrorsTotal.inc({
+            chain: config.chainName,
+            type: "missing_parent_hash",
+          });
           await sleep(config.pollIntervalMs);
           continue;
         }
@@ -162,6 +166,10 @@ export async function startScanner(config: ChainConfig) {
         config.maxRetries,
       );
 
+      if (!lastBlock) {
+        throw new Error(`getBlock returned null for toBlock=${toBlock}`);
+      }
+
       state.lastProcessedBlockNumber = lastBlock.number;
       state.lastProcessedBlockHash = lastBlock.hash;
       await state.save();
@@ -233,6 +241,11 @@ async function fetchAndParseChunk(
           () => batchProvider.getBlock(log.blockNumber),
           config.maxRetries,
         );
+        if (!block) {
+          throw new Error(
+            `getBlock returned null for blockNumber=${log.blockNumber}`,
+          );
+        }
         return parseLog(log, config.chainId, new Date(block.timestamp * 1000));
       }),
     );

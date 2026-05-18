@@ -30,7 +30,13 @@ async function main() {
     server.closeIdleConnections();
     server.close(async (err) => {
       if (err) logger.error("server close error", { err });
-      await disconnectMongo();
+      try {
+        await disconnectMongo();
+      } catch (mongoErr) {
+        logger.error("mongo disconnect failed during shutdown", {
+          err: mongoErr,
+        });
+      }
       logger.info("shutdown complete");
       process.exit(0);
     });
