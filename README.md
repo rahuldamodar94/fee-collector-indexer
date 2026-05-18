@@ -43,7 +43,11 @@ The indexer scans the contract from a configured starting block, follows the cha
                          Client
 ```
 
+See [DESIGN.md](./DESIGN.md) for the architectural decisions and trade-offs that shape the rest of the code.
+
 ## Quick start
+
+**You need a paid archive RPC.** Public and free-tier nodes either rate-limit or can't reach logs as far back as `START_BLOCK=78600000` (~8M blocks). Set `RPC_URLS` accordingly before running `npm start`.
 
 ```bash
 git clone https://github.com/rahuldamodar94/fee-collector-indexer.git
@@ -211,10 +215,6 @@ npm run typecheck # runs tsc --noEmit across all packages
 ```
 
 Unit tests cover the pure modules: cursor encode and decode, retry classification, log parser, chunk sizer. Integration tests cover the API HTTP stack and the scanner against in-memory MongoDB via `mongodb-memory-server`. 29 tests total, runs in under 10 seconds locally.
-
-## Design
-
-See [DESIGN.md](./DESIGN.md) for the architectural decisions and trade-offs that shape the rest of the code.
 
 ## References
 
