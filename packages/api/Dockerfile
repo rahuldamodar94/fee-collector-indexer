@@ -17,9 +17,10 @@ RUN npm ci
 COPY packages/shared packages/shared
 COPY packages/api packages/api
 
-# Compile shared first (api imports it), then api
-RUN npx tsc -p packages/shared
-RUN npx tsc -p packages/api
+# Compile shared first (api imports it), then api.
+# tsconfig.build.json excludes *.test.ts so vitest specs do not ship in the image.
+RUN npx tsc -p packages/shared/tsconfig.build.json
+RUN npx tsc -p packages/api/tsconfig.build.json
 
 # Drop dev deps from node_modules so the runtime stage gets a slim copy
 RUN npm prune --omit=dev

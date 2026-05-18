@@ -201,6 +201,9 @@ async function getSafeHead(
       () => provider.getBlock("finalized"),
       config.maxRetries,
     );
+    if (!block) {
+      throw new Error("getBlock returned null for tag=finalized");
+    }
     return block.number;
   }
 
