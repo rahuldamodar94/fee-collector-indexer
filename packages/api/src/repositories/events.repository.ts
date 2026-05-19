@@ -8,8 +8,8 @@ export async function findEvents(query: EventsQuery): Promise<EventsResult> {
   };
 
   // Items strictly before the cursor. The $or covers "older block" or
-  // "same block, earlier log". Served by the integrator+blockNumber+logIndex
-  // index.
+  // "same block, earlier log". Served by the
+  // integrator+chainId+blockNumber+logIndex index.
   if (query.cursor) {
     filter.$or = [
       { blockNumber: { $lt: query.cursor.blockNumber } },

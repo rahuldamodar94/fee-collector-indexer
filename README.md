@@ -28,7 +28,7 @@ The indexer scans the contract from a configured starting block, follows the cha
    ┌──────────────────────────────────────────────────────┐
    │                  MongoDB (single node)               │
    │  events       (chainId, tx, logIndex)   unique       │
-   │  events       (integrator, blockNumber, logIndex)    │
+   │  events    (integrator, chainId, blockNum, logIndex) │
    │  indexer_states     (chainId)           unique       │
    └────────────────────────┬─────────────────────────────┘
                             │ find + cursor pagination
@@ -163,7 +163,7 @@ Indexer container, port `9090`. `/indexer/health` matches the API shape; `/index
 Indexes:
 
 - `(chainId, transactionHash, logIndex)` **unique**. Backs idempotent `insertMany({ ordered: false })`. Duplicate-key errors on retry are treated as success.
-- `(integrator, blockNumber desc, logIndex desc)`. Backs the API query and cursor pagination.
+- `(integrator, chainId, blockNumber desc, logIndex desc)`. Backs the API query and cursor pagination. `chainId` follows `integrator` per the ESR rule: both are equality filters, then the sort fields trail.
 
 ### `indexer_states`
 

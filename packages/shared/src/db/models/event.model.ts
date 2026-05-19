@@ -6,7 +6,7 @@ import {
 } from "@typegoose/typegoose";
 
 @index({ chainId: 1, transactionHash: 1, logIndex: 1 }, { unique: true })
-@index({ integrator: 1, blockNumber: -1, logIndex: -1 })
+@index({ integrator: 1, chainId: 1, blockNumber: -1, logIndex: -1 })
 @modelOptions({ schemaOptions: { collection: "events", timestamps: true } })
 export class FeeCollectedEvent {
   @prop({ required: true })
