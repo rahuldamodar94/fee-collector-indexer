@@ -11,7 +11,9 @@
     "start": "docker compose up -d --build",
     "stop": "docker compose down",
     "reset": "docker compose down -v",
-    "logs": "docker compose logs -f"
+    "logs": "docker compose logs -f",
+    "dev:indexer": "ts-node packages/indexer/src/index.ts",
+    "dev:api": "ts-node packages/api/src/index.ts"
   },
   "devDependencies": {
     "@types/node": "^25.7.0",

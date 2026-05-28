@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/rahuldamodar94/fee-collector-indexer/actions/workflows/ci.yml/badge.svg)](https://github.com/rahuldamodar94/fee-collector-indexer/actions/workflows/ci.yml)
 
-Indexer and REST API for `FeesCollected` events emitted by the LiFi FeeCollector contract on Polygon. Events are stored in MongoDB and served over HTTP, filterable by integrator.
+Indexer and REST API for `FeesCollected` events emitted by the LiFi FeeCollector contract on Polygon. Events are stored in MongoDB and served over HTTP, filterable by integrator and chain.
 
 The indexer scans the contract from a configured starting block, follows the chain head, and stores each event idempotently. The API serves events to clients with cursor-based pagination. Scope is narrow: one event type, one read endpoint, no write API.
 
@@ -73,6 +73,8 @@ Root `package.json` scripts wrap the most common operator actions:
 | `npm stop` | Stop all services, keep data volumes (`docker compose down`) |
 | `npm reset` | Stop and remove containers + volumes (wipes Mongo data) |
 | `npm logs` | Tail all service logs (`docker compose logs -f`) |
+| `npm run dev:indexer` | Run the indexer in-process via `ts-node` (needs a local Mongo and `.env`) |
+| `npm run dev:api` | Run the API in-process via `ts-node` |
 | `npm test` | Run vitest across all packages |
 | `npm run typecheck` | Run `tsc --noEmit` across all packages |
 
@@ -80,7 +82,7 @@ Root `package.json` scripts wrap the most common operator actions:
 
 ### `GET /api/events`
 
-Returns `FeesCollected` events filtered by integrator, newest first, paginated by cursor.
+Returns `FeesCollected` events filtered by integrator and chain, newest first, paginated by cursor.
 
 **Query parameters:**
 
@@ -135,9 +137,15 @@ Returns `FeesCollected` events filtered by integrator, newest first, paginated b
 
 The cursor is opaque to the client. Internally it's base64url-encoded JSON `{ "blockNumber": number, "logIndex": number }`. The server checks the shape on every request and rejects malformed values with a `400`.
 
+`chainId` is required because the cursor sorts on `(blockNumber, logIndex)`, which is only meaningful within a single chain — block 80M on Polygon and block 80M on Ethereum are unrelated. To list an integrator's events across chains, fan out client-side, one request per chain.
+
 ### `GET /api/health`
 
 API container, port `3000`. Returns `200 { "status": "ok" }` when Mongo is reachable, `503 { "status": "unhealthy" }` otherwise.
+
+### `GET /api/metrics`
+
+API container, port `3000`. Prometheus default Node metrics plus `fee_collector_http_requests_total` (counter, labeled by method/route/status) and `fee_collector_http_request_duration_seconds` (histogram on the prom-client default buckets).
 
 ### `GET /indexer/health` and `GET /indexer/metrics`
 
@@ -164,6 +172,8 @@ Indexes:
 
 - `(chainId, transactionHash, logIndex)` **unique**. Backs idempotent `insertMany({ ordered: false })`. Duplicate-key errors on retry are treated as success.
 - `(integrator, chainId, blockNumber desc, logIndex desc)`. Backs the API query and cursor pagination. `chainId` follows `integrator` per the ESR rule: both are equality filters, then the sort fields trail.
+
+Planned: add `integratorFeeDecimal` and `lifiFeeDecimal` as `Decimal128` mirrors of the string fee fields, populated alongside them on insert. Today, any aggregation that sums or averages fees has to `$toDecimal` per row; the mirror lets pipelines `$sum` / `$avg` directly. Strings stay canonical (full uint256 fidelity); the mirror is left undefined on values exceeding Decimal128's 34-digit precision, with `fee_collector_fee_decimal_overflow_total` surfacing how often that happens.
 
 ### `indexer_states`
 
@@ -217,9 +227,9 @@ For step-through debugging or local iteration:
 ```bash
 npm install
 # in one terminal:
-npx ts-node packages/indexer/src/index.ts
+npm run dev:indexer
 # in another:
-npx ts-node packages/api/src/index.ts
+npm run dev:api
 ```
 
 Requires `.env` to have `MONGO_URL=mongodb://localhost:27017` (Compose overrides this inside containers). Easiest setup: a local Mongo on the default port.
@@ -246,6 +256,10 @@ Unit tests cover the pure modules: cursor encode and decode, retry classificatio
 **Metrics.** A Prometheus container ships in the same `docker-compose.yml`. It scrapes the indexer's `/indexer/metrics` and the API's `/api/metrics` on the compose network. The UI is available at `http://localhost:9091` after `docker compose up -d`. Both endpoints expose `prom-client`'s default Node metrics (event-loop lag, GC, memory) plus a custom set. Indexer: counters and gauges for events ingested, chain-head lag, RPC errors by type, and reorgs. API: `fee_collector_http_requests_total` counter and `fee_collector_http_request_duration_seconds` histogram, labeled by method/route/status.
 
 **Graceful shutdown.** SIGTERM and SIGINT trigger a clean exit. The indexer flips an internal flag that breaks the scan loop between iterations, then disconnects Mongo. The API drains in-flight requests via `server.close` (with `closeIdleConnections` for keep-alive sockets), then disconnects Mongo. Both services exit with code 0 on a clean shutdown. The compose `stop_grace_period: 20s` is the SIGKILL timer — long enough for cleanup to finish.
+
+**Halt is terminal.** On a reorg, the scanner flips `indexer_states.status` to `halted` and exits 0. Compose's `restart: on-failure:5` does not restart on a clean exit, so the chain stays paused until an operator investigates and resets the state document. This is deliberate: a finality-anchored mismatch is either an RPC bug, a code bug, or a finality reversal, and none of those should self-heal.
+
+**Backfill is single-threaded per chain.** One process per chain scans sequentially; there's no intra-chain parallelism. Throughput is bounded by `eth_getLogs` chunk size and the per-block timestamp fetch. Fine for the take-home and for keeping up at the head; a production-scale backfill on a large chain would want block-range sharding across multiple workers writing into the same Mongo (the unique index handles concurrent writers correctly).
 
 **Multi-chain.** The compose default ships Polygon only. The image itself is chain-agnostic: every chain-specific knob (`CHAIN_ID`, `CHAIN_NAME`, `RPC_URLS`, `START_BLOCK`, `FINALITY_STRATEGY`, `POLL_INTERVAL_MS`) is env-driven. To run a second chain locally, copy `.env` to `.env.ethereum`, edit those values, and declare a second indexer service in `docker-compose.yml` pointing at the new env file:
 
