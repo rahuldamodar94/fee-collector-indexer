@@ -1,15 +1,17 @@
-import { FeeCollectedEventModel } from "@fee-collector/shared";
+import { QueryFilter } from "mongoose";
+import {
+  FeeCollectedEventModel,
+  FeeCollectedEvent,
+} from "@fee-collector/shared";
 import type { EventsQuery, EventsResult } from "../types/events";
 
 export async function findEvents(query: EventsQuery): Promise<EventsResult> {
-  const filter: Record<string, unknown> = {
+  const filter: QueryFilter<FeeCollectedEvent> = {
     integrator: query.integrator,
     chainId: query.chainId,
   };
 
-  // Items strictly before the cursor. The $or covers "older block" or
-  // "same block, earlier log". Served by the
-  // integrator+chainId+blockNumber+logIndex index.
+  // Served by the (integrator, chainId, blockNumber desc, logIndex desc) index.
   if (query.cursor) {
     filter.$or = [
       { blockNumber: { $lt: query.cursor.blockNumber } },
